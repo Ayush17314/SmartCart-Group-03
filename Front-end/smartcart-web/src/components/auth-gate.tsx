@@ -1,0 +1,3 @@
+"use client";
+import { useEffect, useState } from "react"; import { usePathname, useRouter } from "next/navigation";
+export function AuthGate({ children }: { children: React.ReactNode }) { const router = useRouter(); const path = usePathname(); const [ready, setReady] = useState(false); useEffect(() => { fetch("/api/auth/session").then(r => r.json()).then(v => { if (!v.authenticated) router.replace(`/login?next=${encodeURIComponent(path)}`); else setReady(true); }).catch(() => router.replace("/login")); }, [path, router]); return ready ? children : <div className="mx-auto min-h-[50vh] max-w-6xl px-6 py-16"><div className="skeleton h-8 w-48 rounded"/><div className="skeleton mt-8 h-64 rounded-3xl"/></div>; }

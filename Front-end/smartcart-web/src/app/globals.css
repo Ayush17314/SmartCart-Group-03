@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+@theme { --color-paper: #f8f7f2; --color-sand: #e9e6dd; --color-ink: #242824; --color-emerald-700: #176b52; --font-display: var(--font-display-face), Georgia, serif; --font-sans: var(--font-body), sans-serif; }
+:root { color-scheme: light; } .dark { color-scheme: dark; --color-paper: #171a17; --color-sand: #282d28; --color-ink: #f2f0e8; background: var(--color-paper); color: var(--color-ink); }
+* { box-sizing: border-box; } html { scroll-behavior: smooth; } body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-body), Arial, sans-serif; } button, a { -webkit-tap-highlight-color: transparent; } button { cursor: pointer; }
+.skeleton { animation: pulse 1.5s ease-in-out infinite; background: linear-gradient(90deg, #e9e6dd 25%, #f4f2ec 50%, #e9e6dd 75%); background-size: 200% 100%; } .dark .skeleton { background: linear-gradient(90deg,#282d28 25%,#343a34 50%,#282d28 75%); background-size: 200% 100%; } @keyframes pulse { to { background-position: -200% 0; } }
+:focus-visible { outline: 2px solid #176b52; outline-offset: 3px; }
+.field { display: block; width: 100%; margin-top: .5rem; border-radius: .9rem; border: 1px solid color-mix(in srgb, var(--color-ink) 16%, transparent); background: transparent; padding: .85rem 1rem; outline: none; }
+.field:focus { border-color: #176b52; box-shadow: 0 0 0 2px color-mix(in srgb, #176b52 20%, transparent); }

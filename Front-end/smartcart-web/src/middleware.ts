@@ -1,0 +1,4 @@
+import { NextRequest, NextResponse } from "next/server";
+const protectedPaths = ["/cart", "/checkout", "/orders", "/wishlist", "/account", "/admin", "/super-admin"];
+export function middleware(request: NextRequest) { const path = request.nextUrl.pathname; if (protectedPaths.some(protectedPath => path === protectedPath || path.startsWith(`${protectedPath}/`)) && !request.cookies.has("smartcart_token")) { const login = new URL("/login", request.url); login.searchParams.set("portal", path.startsWith("/super-admin") ? "super_admin" : path.startsWith("/admin") ? "staff" : "customer"); login.searchParams.set("next", `${path}${request.nextUrl.search}`); return NextResponse.redirect(login); } return NextResponse.next(); }
+export const config = { matcher: ["/cart/:path*", "/checkout/:path*", "/orders/:path*", "/wishlist/:path*", "/account/:path*", "/admin/:path*", "/super-admin/:path*"] };

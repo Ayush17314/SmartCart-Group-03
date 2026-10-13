@@ -1,0 +1,2 @@
+import type { Product } from "@/lib/types"; import { ProductCard } from "@/components/product-card";
+export function ProductGrid({ products }: { products: Product[] }) { if (!products.length) return <p className="col-span-full py-20 text-center text-ink/55">Nothing here just yet. Try another filter.</p>; return <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 md:gap-x-7 md:gap-y-14">{products.map(p => <ProductCard key={p._id} product={p}/>)}</div>; }

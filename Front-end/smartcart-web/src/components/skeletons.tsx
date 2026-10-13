@@ -1,0 +1,1 @@
+export function ProductSkeletons() { return <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-7">{Array.from({ length: 6 }, (_, i) => <div key={i}><div className="skeleton aspect-[4/5] rounded-[1.6rem]"/><div className="skeleton mt-4 h-4 w-2/3 rounded"/><div className="skeleton mt-2 h-3 w-1/3 rounded"/></div>)}</div>; }
