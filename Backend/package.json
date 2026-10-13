@@ -1,0 +1,10 @@
+{
+  "name": "smartcart-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SmartCart backend microservices runner",
+  "scripts": {
+    "start": "node free-ports.js && npx concurrently -n auth,prod,cart,wish,order,pay,notif,gate -c blue,green,yellow,magenta,cyan,red,white,gray \"npm --prefix auth-service start\" \"npm --prefix product-service start\" \"npm --prefix cart-service start\" \"npm --prefix wishlist-service start\" \"npm --prefix order-service start\" \"npm --prefix payment-service start\" \"npm --prefix notification-service start\" \"npm --prefix api-gateway start\"",
+    "dev": "npm start"
+  }
+}

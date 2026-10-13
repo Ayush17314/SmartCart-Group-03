@@ -1,0 +1,399 @@
+{
+  "info": {
+    "name": "SmartCart Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "register"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Ada\", \"email\": \"ada@example.com\", \"password\": \"password123\"}"
+        }
+      }
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"ada@example.com\", \"password\": \"password123\"}"
+        }
+      }
+    },
+    {
+      "name": "List and filter products",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/products?search=phone&minPrice=10&page=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "products"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create product (admin)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/products",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "products"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Phone\", \"price\": 99, \"category\": \"electronics\", \"stock\": 5}"
+        }
+      }
+    },
+    {
+      "name": "Cart view",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/cart",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "cart"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Add cart item",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/cart/items",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "cart",
+            "items"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"productId\": \"{{productId}}\", \"quantity\": 1}"
+        }
+      }
+    },
+    {
+      "name": "Wishlist view",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/wishlist",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wishlist"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Add wishlist item",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/wishlist/{{productId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wishlist",
+            "{{productId}}"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Create order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/orders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"items\": [{\"productId\": \"{{productId}}\", \"quantity\": 1}]}"
+        }
+      }
+    },
+    {
+      "name": "Create payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/payments/create",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "create"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"orderId\": \"{{orderId}}\", \"amount\": 99, \"paymentMethod\": \"UPI\"}"
+        }
+      }
+    },
+    {
+      "name": "Refund payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/payments/{{paymentId}}/refund",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "{{paymentId}}",
+            "refund"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Order notification",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/notifications/order",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "notifications",
+            "order"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"userId\": \"{{userId}}\", \"orderId\": \"{{orderId}}\"}"
+        }
+      }
+    },
+    {
+      "name": "GraphQL products",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/graphql",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "graphql"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"query\": \"{ products { name price category } }\"}"
+        }
+      }
+    }
+  ]
+}

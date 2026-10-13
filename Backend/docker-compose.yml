@@ -1,0 +1,199 @@
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    ports: ["27017:27017"]
+    volumes: ["mongo-data:/data/db"]
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${SQL_DATABASE:-smartcart}
+      MYSQL_USER: ${SQL_USER:-smartcart}
+      MYSQL_PASSWORD: ${SQL_PASSWORD:-local-sql-password-change-me}
+      MYSQL_ROOT_PASSWORD: ${SQL_ROOT_PASSWORD:-local-sql-root-password-change-me}
+    ports: ["3306:3306"]
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  auth-service:
+    build: ./auth-service
+    expose: ["4001"]
+    restart: unless-stopped
+    environment:
+      PORT: 4001
+      NODE_ENV: ${NODE_ENV:-development}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      AUTH_EXCHANGE_SECRET: ${AUTH_EXCHANGE_SECRET:-local-auth-exchange-secret-change-me}
+      NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:-local-notification-secret-change-me}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mock}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_TIMEOUT_MS: ${EMAIL_TIMEOUT_MS:-8000}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-}
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+    depends_on: [mongodb]
+  product-service:
+    build: ./product-service
+    expose: ["4002"]
+    restart: unless-stopped
+    environment:
+      PORT: 4002
+      NODE_ENV: ${NODE_ENV:-development}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      INVENTORY_SERVICE_SECRET: ${INVENTORY_SERVICE_SECRET:-local-inventory-service-secret-change-me}
+      LOW_STOCK_THRESHOLD: ${LOW_STOCK_THRESHOLD:-5}
+      PAYMENT_CURRENCY: ${PAYMENT_CURRENCY:-INR}
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      ORDER_SERVICE_URL: http://order-service:4005
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+    depends_on: [mongodb, auth-service]
+  cart-service:
+    build: ./cart-service
+    expose: ["4003"]
+    restart: unless-stopped
+    environment:
+      PORT: 4003
+      NODE_ENV: ${NODE_ENV:-development}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+    depends_on: [mongodb, auth-service]
+  wishlist-service:
+    build: ./wishlist-service
+    expose: ["4004"]
+    restart: unless-stopped
+    environment:
+      PORT: 4004
+      NODE_ENV: ${NODE_ENV:-development}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+    depends_on: [mongodb, auth-service]
+  order-service:
+    build: ./order-service
+    expose: ["4005"]
+    restart: unless-stopped
+    environment:
+      PORT: 4005
+      NODE_ENV: ${NODE_ENV:-development}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      INVENTORY_SERVICE_SECRET: ${INVENTORY_SERVICE_SECRET:-local-inventory-service-secret-change-me}
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+      PAYMENT_SERVICE_SECRET: ${PAYMENT_SERVICE_SECRET:-local-payment-order-sync-secret-change-me}
+      PAYMENT_CURRENCY: ${PAYMENT_CURRENCY:-INR}
+    depends_on: [mongodb, auth-service]
+  payment-service:
+    build: ./payment-service
+    expose: ["4006"]
+    restart: unless-stopped
+    environment:
+      PORT: 4006
+      NODE_ENV: ${NODE_ENV:-development}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+      ORDER_SERVICE_URL: http://order-service:4005
+      PAYMENT_CURRENCY: ${PAYMENT_CURRENCY:-INR}
+      RAZORPAY_API_URL: ${RAZORPAY_API_URL:-https://api.razorpay.com/v1}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      PAYMENT_SERVICE_SECRET: ${PAYMENT_SERVICE_SECRET:-local-payment-order-sync-secret-change-me}
+      NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:-local-notification-secret-change-me}
+      NOTIFICATION_SERVICE_TIMEOUT_MS: ${NOTIFICATION_SERVICE_TIMEOUT_MS:-3000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    depends_on: [mongodb, auth-service]
+  notification-service:
+    build: ./notification-service
+    expose: ["4007"]
+    restart: unless-stopped
+    environment:
+      PORT: 4007
+      NODE_ENV: ${NODE_ENV:-development}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:-local-notification-secret-change-me}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mock}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_TIMEOUT_MS: ${EMAIL_TIMEOUT_MS:-8000}
+      NOTIFICATION_MAX_ATTEMPTS: ${NOTIFICATION_MAX_ATTEMPTS:-5}
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+    depends_on: [mongodb, auth-service]
+  api-gateway:
+    build: ./api-gateway
+    ports: ["4000:4000"]
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      NODE_ENV: ${NODE_ENV:-development}
+      AUTH_EXCHANGE_SECRET: ${AUTH_EXCHANGE_SECRET:-local-auth-exchange-secret-change-me}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      SQL_HOST: mysql
+      SQL_PORT: 3306
+      SQL_USER: ${SQL_USER:-smartcart}
+      SQL_PASSWORD: ${SQL_PASSWORD:-local-sql-password-change-me}
+      SQL_DATABASE: ${SQL_DATABASE:-smartcart}
+      SQL_POOL_SIZE: ${SQL_POOL_SIZE:-10}
+      OUTBOUND_TIMEOUT_MS: ${OUTBOUND_TIMEOUT_MS:-5000}
+      OUTBOUND_RETRIES: ${OUTBOUND_RETRIES:-2}
+      OUTBOUND_RETRY_BASE_MS: ${OUTBOUND_RETRY_BASE_MS:-200}
+      CIRCUIT_FAILURE_THRESHOLD: ${CIRCUIT_FAILURE_THRESHOLD:-5}
+      CIRCUIT_RESET_TIMEOUT_MS: ${CIRCUIT_RESET_TIMEOUT_MS:-15000}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      CART_SERVICE_URL: http://cart-service:4003
+      WISHLIST_SERVICE_URL: http://wishlist-service:4004
+      ORDER_SERVICE_URL: http://order-service:4005
+      PAYMENT_SERVICE_URL: http://payment-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+    depends_on:
+      mysql: { condition: service_healthy }
+      auth-service: { condition: service_started }
+      product-service: { condition: service_started }
+      cart-service: { condition: service_started }
+      wishlist-service: { condition: service_started }
+      order-service: { condition: service_started }
+      payment-service: { condition: service_started }
+      notification-service: { condition: service_started }
+volumes:
+  mongo-data:
+  mysql-data:
