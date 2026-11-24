@@ -9,7 +9,7 @@ SmartCart is an enterprise-grade, Amazon-inspired e-commerce platform built with
 - **Group ID:** 05 (TeamID 05)
 - **Course Project:** Web Services
 - **GitHub Repository:** [https://github.com/Ayush17314/SmartCart](https://github.com/Ayush17314/SmartCart)
-
+- **Deployed Website:** [https://smart-cart-sooty.vercel.app/]
 ### Team Members & Contributions
 
 | # | Name | Roll Number | Assigned Modules |
@@ -20,6 +20,139 @@ SmartCart is an enterprise-grade, Amazon-inspired e-commerce platform built with
 | 4 | **Anuj Gupta** | `20251651025` | `cart-service` & `wishlist-service` |
 | 5 | **Kaushik Nanda Upadhaya** | `20251651050` | `notification-service` |
 
+
+---
+
+## Quick Start Guide
+
+### Prerequisites
+* [Node.js](https://nodejs.org/) (v20+ LTS recommended)
+* [pnpm](https://pnpm.io/) (v9+) or `npm` (v10+)
+* [MongoDB](https://www.mongodb.com/) (Local instance on `localhost:27017` or MongoDB Atlas Cluster)
+* [Docker Desktop](https://www.docker.com/) (Optional, for containerized run)
+
+---
+
+### Step 1: Environment Configuration
+
+Copy the backend environment template to create your live configuration:
+
+```bash
+cp Backend/.env.example Backend/.env
+```
+
+Ensure the following key variables are configured in `Backend/.env`:
+
+```env
+# Database Connection (MongoDB Atlas or Local)
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mgmdzqg.mongodb.net/
+
+# Email Provider Configuration (100% Free SMTP - Sends to ANY recipient)
+EMAIL_PROVIDER=smtp
+GMAIL_USER=ayushdubey1504@gmail.com
+GMAIL_APP_PASSWORD=your_16_character_app_password
+
+# Inter-Service Shared Secrets (Min 32 characters)
+JWT_SECRET=a9955a6c8acabae70be5ea1378f14fad75c0c6b761a7dff8e656a1a0a703933c
+AUTH_EXCHANGE_SECRET=local-auth-exchange-secret-change-me
+NOTIFICATION_SERVICE_SECRET=1184921a4210cfae738517065b262c5efc96f5e39b0b0c73519633f184e10e84
+PAYMENT_SERVICE_SECRET=smartcart-internal-payment-service-secret-2026-key
+
+# Initial Super Admin Account Credentials
+SUPER_ADMIN_NAME="Ayush Dubey"
+SUPER_ADMIN_EMAIL="ayushdubey1504@gmail.com"
+SUPER_ADMIN_PASSWORD="YourSuperSecurePassword123!"
+
+# Razorpay Test Mode Credentials (Optional for Online Payments; COD works out of the box)
+RAZORPAY_KEY_ID=rzp_test_your_key_id
+RAZORPAY_KEY_SECRET=your_razorpay_secret
+```
+
+---
+
+### Step 2: Seed Products & Bootstrap Super Admin
+
+1. **Populate the Product Catalog:**
+   ```powershell
+   cd "Backend\product-service"
+   node scripts/seed-products.js
+   ```
+   *Connects to MongoDB and seeds 8 realistic products across Electronics, Fashion, Home, and Beauty.*
+
+2. **Bootstrap the Super Admin Account:**
+   ```powershell
+   cd "..\auth-service"
+   node scripts/bootstrap-super-admin.js
+   ```
+   *Creates the verified Super Admin account in `smartcart_auth`.*
+
+---
+
+### Step 3: Run the Application
+
+#### Option A: Running with Docker Compose (Recommended)
+From the root directory:
+```bash
+cd Backend
+docker compose up --build
+```
+This starts:
+- MySQL 8.0 on port `3306`
+- MongoDB on port `27017`
+- All 8 microservices and API Gateway on port `4000`
+
+In a separate terminal, start the Next.js frontend:
+```bash
+cd Frontend/smartcart-web
+pnpm install
+pnpm dev
+```
+Open **`http://localhost:3000`** in your browser.
+
+---
+
+#### Option B: Running Locally (Separate Processes)
+If running without Docker, start services in separate terminals:
+
+1. **API Gateway (Port 4000):**
+   ```bash
+   cd Backend/api-gateway && npm install && npm run dev
+   ```
+2. **Auth Service (Port 4001):**
+   ```bash
+   cd Backend/auth-service && npm install && npm run dev
+   ```
+3. **Product Service (Port 4002):**
+   ```bash
+   cd Backend/product-service && npm install && npm run dev
+   ```
+4. **Cart Service (Port 4003):**
+   ```bash
+   cd Backend/cart-service && npm install && npm run dev
+   ```
+5. **Wishlist Service (Port 4004):**
+   ```bash
+   cd Backend/wishlist-service && npm install && npm run dev
+   ```
+6. **Order Service (Port 4005):**
+   ```bash
+   cd Backend/order-service && npm install && npm run dev
+   ```
+7. **Payment Service (Port 4006):**
+   ```bash
+   cd Backend/payment-service && npm install && npm run dev
+   ```
+8. **Notification Service (Port 4007):**
+   ```bash
+   cd Backend/notification-service && npm install && npm run dev
+   ```
+9. **Next.js Frontend (Port 3000):**
+   ```bash
+   cd Frontend/smartcart-web && pnpm install && pnpm dev
+   ```
+
+
+---
 #### Detailed Member Contributions
 
 #### 1. Ayush Kumar Dubey (`20251651030`)
@@ -196,135 +329,6 @@ SmartCart/
 └── README.md                      # Flagship Project Documentation
 ```
 
----
-
-## Quick Start Guide
-
-### Prerequisites
-* [Node.js](https://nodejs.org/) (v20+ LTS recommended)
-* [pnpm](https://pnpm.io/) (v9+) or `npm` (v10+)
-* [MongoDB](https://www.mongodb.com/) (Local instance on `localhost:27017` or MongoDB Atlas Cluster)
-* [Docker Desktop](https://www.docker.com/) (Optional, for containerized run)
-
----
-
-### Step 1: Environment Configuration
-
-Copy the backend environment template to create your live configuration:
-
-```bash
-cp Backend/.env.example Backend/.env
-```
-
-Ensure the following key variables are configured in `Backend/.env`:
-
-```env
-# Database Connection (MongoDB Atlas or Local)
-MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mgmdzqg.mongodb.net/
-
-# Email Provider Configuration (100% Free SMTP - Sends to ANY recipient)
-EMAIL_PROVIDER=smtp
-GMAIL_USER=ayushdubey1504@gmail.com
-GMAIL_APP_PASSWORD=your_16_character_app_password
-
-# Inter-Service Shared Secrets (Min 32 characters)
-JWT_SECRET=a9955a6c8acabae70be5ea1378f14fad75c0c6b761a7dff8e656a1a0a703933c
-AUTH_EXCHANGE_SECRET=local-auth-exchange-secret-change-me
-NOTIFICATION_SERVICE_SECRET=1184921a4210cfae738517065b262c5efc96f5e39b0b0c73519633f184e10e84
-PAYMENT_SERVICE_SECRET=smartcart-internal-payment-service-secret-2026-key
-
-# Initial Super Admin Account Credentials
-SUPER_ADMIN_NAME="Ayush Dubey"
-SUPER_ADMIN_EMAIL="ayushdubey1504@gmail.com"
-SUPER_ADMIN_PASSWORD="YourSuperSecurePassword123!"
-
-# Razorpay Test Mode Credentials (Optional for Online Payments; COD works out of the box)
-RAZORPAY_KEY_ID=rzp_test_your_key_id
-RAZORPAY_KEY_SECRET=your_razorpay_secret
-```
-
----
-
-### Step 2: Seed Products & Bootstrap Super Admin
-
-1. **Populate the Product Catalog:**
-   ```powershell
-   cd "Backend\product-service"
-   node scripts/seed-products.js
-   ```
-   *Connects to MongoDB and seeds 8 realistic products across Electronics, Fashion, Home, and Beauty.*
-
-2. **Bootstrap the Super Admin Account:**
-   ```powershell
-   cd "..\auth-service"
-   node scripts/bootstrap-super-admin.js
-   ```
-   *Creates the verified Super Admin account in `smartcart_auth`.*
-
----
-
-### Step 3: Run the Application
-
-#### Option A: Running with Docker Compose (Recommended)
-From the root directory:
-```bash
-cd Backend
-docker compose up --build
-```
-This starts:
-- MySQL 8.0 on port `3306`
-- MongoDB on port `27017`
-- All 8 microservices and API Gateway on port `4000`
-
-In a separate terminal, start the Next.js frontend:
-```bash
-cd Frontend/smartcart-web
-pnpm install
-pnpm dev
-```
-Open **`http://localhost:3000`** in your browser.
-
----
-
-#### Option B: Running Locally (Separate Processes)
-If running without Docker, start services in separate terminals:
-
-1. **API Gateway (Port 4000):**
-   ```bash
-   cd Backend/api-gateway && npm install && npm run dev
-   ```
-2. **Auth Service (Port 4001):**
-   ```bash
-   cd Backend/auth-service && npm install && npm run dev
-   ```
-3. **Product Service (Port 4002):**
-   ```bash
-   cd Backend/product-service && npm install && npm run dev
-   ```
-4. **Cart Service (Port 4003):**
-   ```bash
-   cd Backend/cart-service && npm install && npm run dev
-   ```
-5. **Wishlist Service (Port 4004):**
-   ```bash
-   cd Backend/wishlist-service && npm install && npm run dev
-   ```
-6. **Order Service (Port 4005):**
-   ```bash
-   cd Backend/order-service && npm install && npm run dev
-   ```
-7. **Payment Service (Port 4006):**
-   ```bash
-   cd Backend/payment-service && npm install && npm run dev
-   ```
-8. **Notification Service (Port 4007):**
-   ```bash
-   cd Backend/notification-service && npm install && npm run dev
-   ```
-9. **Next.js Frontend (Port 3000):**
-   ```bash
-   cd Frontend/smartcart-web && pnpm install && pnpm dev
-   ```
 
 ---
 
