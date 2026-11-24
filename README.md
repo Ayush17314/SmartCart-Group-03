@@ -6,7 +6,7 @@ SmartCart is an enterprise-grade, Amazon-inspired e-commerce platform built with
 
 ## Academic Group & Repository Information
 
-- **Group ID:** 05 (TeamID 05)
+- **Group ID:** 03 (TeamID 03)
 - **Course Project:** Web Services
 - **GitHub Repository:** [https://github.com/Ayush17314/SmartCart](https://github.com/Ayush17314/SmartCart)
 - **Deployed Website:** [https://smart-cart-sooty.vercel.app/]
@@ -150,6 +150,7 @@ If running without Docker, start services in separate terminals:
    ```bash
    cd Frontend/smartcart-web && pnpm install && pnpm dev
    ```
+#### After Installing every packages and all. :- use "npm run dev" to start all the services and frontend alltogether. Then use localhost port 3000.
 
 
 ---
