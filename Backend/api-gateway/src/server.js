@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
 const app = require("./app");
 const { initializeSqlStore, closeSqlStore } = require("./sql-store");
 

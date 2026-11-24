@@ -63,9 +63,16 @@ function validateBody(schemaName) {
     return (req, res, next) => {
         const validate = validators[schemaName];
         if (validate(req.body)) return next();
-        const details = validate.errors.map((error) => `${error.instancePath || "/body"} ${error.message}`).join("; ");
+        const errorsList = (validate.errors || []).map((err) => ({
+            field: err.instancePath ? err.instancePath.replace(/^\//, "").replace(/\//g, ".") : (err.params?.missingProperty || "body"),
+            message: err.message,
+            keyword: err.keyword,
+        }));
+        const details = errorsList.map((e) => `${e.field}: ${e.message}`).join("; ");
         const validationError = new Error(`Invalid request body: ${details}`);
         validationError.status = 400;
+        validationError.type = "validation-error";
+        validationError.errors = errorsList;
         return next(validationError);
     };
 }

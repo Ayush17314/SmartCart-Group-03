@@ -1,41 +1,69 @@
-# Payment Service
+# SmartCart Payment Service
 
-The payment service uses Razorpay Orders and Standard Checkout. SmartCart creates the Razorpay order on the server, sends only the public key and order details to the browser, verifies the Checkout signature on the server, and confirms the payment status with Razorpay before marking it successful.
+The Payment Service handles payment lifecycle orchestration for SmartCart. It integrates with **Razorpay** for online UPI, card, and net banking transactions, manages **Cash on Delivery (COD)** orders, validates cryptographic webhook events, executes Super Admin refunds, and produces financial reconciliation reports.
 
-## Configure test mode
+---
 
-1. Copy `Backend/.env.example` to `Backend/.env`.
-2. Add your Razorpay **test mode** Key ID and Key Secret from the Razorpay Dashboard. Keep the secret out of the frontend and source control.
-3. Set a unique `RAZORPAY_WEBHOOK_SECRET` in the Dashboard webhook configuration and the same value in `Backend/.env`.
-4. From `Backend`, run `docker compose up --build`.
-5. In the Razorpay Dashboard, configure the webhook URL as `https://<your-public-api-host>/api/payments/webhook` and subscribe to `payment.captured` and `payment.failed`.
+## Payment Methods & Workflows
 
-For local webhook development, expose the gateway with a secure HTTPS tunnel and use its public URL in the Dashboard. Razorpay sends a signature in `X-Razorpay-Signature`; the service verifies it against the raw request body.
+### 1. Online Payments (UPI, Cards & Net Banking via Razorpay)
+1. **Payment Intent Creation:** During checkout, `order-service` calls `POST /api/payments/create` with an `Idempotency-Key`. The service creates a Razorpay Order via `https://api.razorpay.com/v1/orders` with currency `INR` and amounts converted to paise ($1\text{ INR} = 100\text{ paise}$).
+2. **Client Checkout Modal:** The service returns public checkout parameters (`orderId`, `amount`, `currency`, `keyId`) to the frontend Next.js app, which initializes the Razorpay Standard Checkout modal.
+3. **Server Signature Verification:** When the customer completes payment, the browser sends the response payload (`razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature`) to `POST /api/payments/verify/:paymentId`.
+   - The service calculates `HMAC-SHA256(order_id + "|" + payment_id, RAZORPAY_KEY_SECRET)`.
+   - Compares the calculated hash against the received signature using `crypto.timingSafeEqual`.
+   - Validates that Razorpay API reports `status: "captured"`.
+4. **Order Status Synchronization:** Upon confirmed capture, the service notifies `order-service` via `PATCH /internal/orders/:id/payment` to advance the order to `CONFIRMED` and commit reserved inventory.
 
-## Checkout flow
+### 2. Asynchronous Webhooks
+If a customer closes the browser window after completing payment before the verification POST executes:
+- Razorpay sends a signed webhook to `POST /api/payments/webhook`.
+- The service validates the `X-Razorpay-Signature` against `RAZORPAY_WEBHOOK_SECRET`.
+- Processes `payment.captured` and `payment.failed` events to ensure zero order state drift.
 
-The frontend submits an order. The order service asks this service to create the payment using an `Idempotency-Key`. For UPI or card, this service creates a Razorpay Order and returns the public Checkout fields. The browser opens Razorpay Checkout and submits the returned payment ID, order ID, and signature to the server. The server checks the signature against the stored Razorpay order ID, fetches the payment from Razorpay, and only marks it `SUCCESS` after capture. The payment status is then synced to the order service. Webhooks provide an additional status update path.
+### 3. Cash on Delivery (COD)
+- Skips Razorpay order creation.
+- Stored as `gateway: "OFFLINE"` with `status: "PENDING"`.
+- Payment is collected upon delivery and confirmed by staff in the Admin Portal.
 
-Cash on delivery skips Razorpay Checkout. Amounts are supplied in rupees by the order service and converted to paise for Razorpay. `PAYMENT_CURRENCY` defaults to `INR`.
+### 4. Super Admin Refunds
+- Approved customer returns can be refunded via `POST /api/payments/refund/:paymentId` (Super Admin only).
+- Implements an atomic database compare-and-set lock (`refundLock: true`) to prevent concurrent or duplicate refund calls to Razorpay.
 
-## Routes
+---
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/payments/create` | Create or retrieve an idempotent Razorpay order; requires `Idempotency-Key` and a bearer token |
-| `POST` | `/api/payments/verify/:paymentId` | Verify Razorpay Checkout response; requires a bearer token |
-| `POST` | `/api/payments/webhook` | Accept signed Razorpay `payment.captured` and `payment.failed` events |
-| `GET` | `/api/payments/order/:orderId` | Retrieve a payment belonging to the authenticated user |
-| `GET` | `/api/payments/user` | List the authenticated user’s payments |
-| `POST` | `/api/payments/refund/:paymentId` | Submit an approved return's full refund to Razorpay (Super Admin only) |
-| `GET` | `/api/payments/admin/reconciliation` | Paginated payment reconciliation report (`analytics.read`); `format=csv` exports at most 5,000 matching records |
-| `GET` | `/api/payments/admin/audit` | Read reconciliation export audit records (`audit.read`) |
+## Environment Configuration
 
-Use Razorpay test keys and test payment details first. Switch to live keys only after verifying the full flow and configuring the live webhook. This service does not store card numbers. Configure Razorpay capture settings so payments are captured automatically; an authorized but uncaptured payment remains pending in SmartCart.
+Configure in `Backend/.env`:
 
-Refund eligibility is checked with Order Service and requires a reviewed return.
-A database compare-and-set lock prevents concurrent full refunds. If the
-Razorpay request times out or returns an ambiguous server error, the lock stays
-set because the provider may have accepted it; reconcile the provider
-transaction before manually clearing the lock. Partial refunds are not
-supported.
+```env
+PORT=4006
+MONGODB_DB=smartcart_payment
+JWT_SECRET=a9955a6c8acabae70be5ea1378f14fad75c0c6b761a7dff8e656a1a0a703933c
+PAYMENT_SERVICE_SECRET=smartcart-internal-payment-service-secret-2026-key
+NOTIFICATION_SERVICE_SECRET=1184921a4210cfae738517065b262c5efc96f5e39b0b0c73519633f184e10e84
+
+# Razorpay Test Mode Credentials
+RAZORPAY_KEY_ID=rzp_test_your_key_id
+RAZORPAY_KEY_SECRET=your_razorpay_secret
+RAZORPAY_WEBHOOK_SECRET=your_webhook_secret_here
+RAZORPAY_API_URL=https://api.razorpay.com/v1
+RAZORPAY_TIMEOUT_MS=8000
+PAYMENT_CURRENCY=INR
+```
+
+---
+
+## Endpoints Reference
+
+| Method | Endpoint | Authorization | Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/health` | Public | Service health check |
+| `POST` | `/api/payments/create` | Bearer Token | Create an idempotent Razorpay order (requires `Idempotency-Key`) |
+| `POST` | `/api/payments/verify/:paymentId` | Bearer Token | Verify Razorpay checkout signature and confirm capture |
+| `POST` | `/api/payments/webhook` | `X-Razorpay-Signature` | Ingest and process asynchronous Razorpay webhook events |
+| `GET` | `/api/payments/order/:orderId` | Bearer Token | Retrieve payment status for an order belonging to the user |
+| `GET` | `/api/payments/user` | Bearer Token | List all payment transactions for the authenticated customer |
+| `POST` | `/api/payments/refund/:paymentId` | Super Admin | Issue a full refund for an approved return via Razorpay |
+| `GET` | `/api/payments/admin/reconciliation` | Staff (`analytics.read`) | Paginated payment reconciliation report (supports `format=csv`) |
+| `GET` | `/api/payments/admin/audit` | Super Admin (`audit.read`)| Access audit logs for financial reconciliation reports |

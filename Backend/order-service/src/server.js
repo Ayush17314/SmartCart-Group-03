@@ -1,5 +1,10 @@
 require("dotenv").config();
 require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+try {
+  const rawDns = require("dns");
+  const nonLocalDns = rawDns.getServers().filter((s) => s !== "127.0.0.1" && s !== "::1");
+  rawDns.setServers(["8.8.8.8", "1.1.1.1", ...nonLocalDns]);
+} catch {}
 
 const axios = require("axios");
 const cors = require("cors");
@@ -153,6 +158,8 @@ app.use((req, res, next) => {
 });
 
 const escapeXml = (value) => String(value ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
+const { problem } = require("./problem");
+
 const xmlTag = (value) => String(value).replace(/[^a-zA-Z0-9_.-]/g, "_") || "item";
 const toXml = (value, tag = "item") => {
     const safeTag = xmlTag(tag);
@@ -163,6 +170,39 @@ const toXml = (value, tag = "item") => {
 };
 const asXml = (result) => `<?xml version="1.0" encoding="UTF-8"?>${toXml(result, "response")}`;
 
+function computeOrderEtag(order) {
+    const raw = `${order._id}-${order.updatedAt ? new Date(order.updatedAt).getTime() : 0}-${order.orderStatus}-${order.paymentStatus || ""}`;
+    return `"${crypto.createHash("md5").update(raw).digest("hex")}"`;
+}
+
+app.options(["/api/orders", "/v1/api/orders"], (req, res) => {
+    res.set("Allow", "GET, POST, OPTIONS, HEAD");
+    return res.status(204).end();
+});
+app.options(["/api/orders/:id", "/v1/api/orders/:id"], (req, res) => {
+    res.set("Allow", "GET, PATCH, OPTIONS, HEAD");
+    return res.status(204).end();
+});
+app.options(["/api/orders/:id/status", "/v1/api/orders/:id/status"], (req, res) => {
+    res.set("Allow", "PATCH, OPTIONS");
+    return res.status(204).end();
+});
+
+app.use((req, res, next) => {
+    if (req.path.startsWith("/api") && req.get("Accept")) {
+        const accepts = req.accepts(["application/json", "application/xml", "text/xml", "application/problem+json", "*/*"]);
+        if (!accepts) {
+            return problem(res, {
+                type: "not-acceptable",
+                title: "Not Acceptable",
+                status: 406,
+                detail: "Requested media type not supported. Please accept application/json or application/xml.",
+            });
+        }
+    }
+    next();
+});
+
 function sendData(res, data, statusCode = 200) {
     res.vary("Accept");
     if (res.req && res.req.accepts && res.req.accepts(["json", "xml"]) === "xml") {
@@ -172,12 +212,17 @@ function sendData(res, data, statusCode = 200) {
 }
 
 function sendError(res, error) {
-    let statusCode = error.statusCode || 500;
+    let statusCode = error.statusCode || error.status || 500;
     if (error.name === "ValidationError" || error.name === "CastError") {
         statusCode = 400;
     }
-    const message = statusCode >= 500 ? "Internal server error" : error.message;
-    return res.status(statusCode).json({ success: false, message, requestId: res.getHeader("X-Request-Id") || (res.req && res.req.requestId) });
+    return problem(res, {
+        status: statusCode,
+        type: error.type,
+        title: error.title,
+        detail: statusCode >= 500 ? "Internal server error" : error.message,
+        errors: error.errors,
+    });
 }
 
 async function authenticate(req, res, next) {
@@ -552,6 +597,15 @@ app.get("/internal/orders/:id/refund-eligibility", async (req, res) => {
 });
 
 app.post("/api/orders", authenticate, async (req, res) => {
+    if (!Array.isArray(req.body.items) || req.body.items.length === 0) {
+        return problem(res, {
+            type: "empty-cart",
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: "Order must contain at least 1 item",
+            errors: [{ field: "items", message: "items must not be empty" }],
+        });
+    }
     const orderId = new mongoose.Types.ObjectId();
     let reservationAttempted = false;
     let couponReservationAttempted = false;
@@ -628,6 +682,8 @@ app.post("/api/orders", authenticate, async (req, res) => {
 
         void enqueueOrderNotification(order, "order.created");
 
+        res.set("Location", `/api/orders/${order._id}`);
+        res.set("ETag", computeOrderEtag(order));
         return sendData(res, order, 201);
     } catch (error) {
         if (reservationAttempted && !orderPersisted) {
@@ -640,9 +696,11 @@ app.post("/api/orders", authenticate, async (req, res) => {
         }
         if (error.response?.status === 404) {
             error.statusCode = 404;
+            error.type = "item-unavailable";
             error.message = "A requested product was not found";
         } else if (error.response?.status >= 400 && error.response?.status < 500) {
             error.statusCode = error.response.status;
+            error.type = "item-unavailable";
             error.message = error.response.data?.message || "A requested product is unavailable";
         } else if (error.code === "ECONNABORTED" || error.code === "ECONNREFUSED") {
             error.statusCode = 503;
@@ -863,15 +921,21 @@ app.get("/api/orders/:id/tracking", authenticate, async (req, res) => {
 app.get("/api/orders/:id", authenticate, async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.id)) {
-            return res.status(400).json({ success: false, message: "Invalid order id" });
+            return problem(res, { type: "bad-request", status: 400, detail: "Invalid order id" });
         }
 
         const order = await Order.findById(req.params.id);
         if (!order) {
-            return res.status(404).json({ success: false, message: "Order not found" });
+            return problem(res, { type: "order-not-found", status: 404, detail: "Order not found" });
         }
         if (!canViewOrder(order, req.user)) {
-            return res.status(403).json({ success: false, message: "Forbidden" });
+            return problem(res, { type: "insufficient-permissions", status: 403, detail: "Forbidden" });
+        }
+
+        const etag = computeOrderEtag(order);
+        res.set("ETag", etag);
+        if (req.get("If-None-Match") === etag) {
+            return res.status(304).end();
         }
 
         return sendData(res, order);
@@ -883,45 +947,71 @@ app.get("/api/orders/:id", authenticate, async (req, res) => {
 app.patch("/api/orders/:id/status", authenticate, requirePermission("orders.manage"), async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.id)) {
-            return res.status(400).json({ success: false, message: "Invalid order id" });
+            return problem(res, { type: "bad-request", status: 400, detail: "Invalid order id" });
         }
 
         const nextStatus = String(req.body.status || "").toUpperCase();
         if (!ORDER_STATUSES.includes(nextStatus)) {
-            return res.status(400).json({ success: false, message: "Invalid order status" });
+            return problem(res, { type: "bad-request", status: 400, detail: "Invalid order status" });
         }
 
         const order = await Order.findById(req.params.id);
         if (!order) {
-            return res.status(404).json({ success: false, message: "Order not found" });
+            return problem(res, { type: "order-not-found", status: 404, detail: "Order not found" });
         }
-        if (["CONFIRMED", "SHIPPED"].includes(nextStatus) && order.paymentMethod !== "COD" && order.paymentStatus !== "SUCCESS") return res.status(409).json({ success: false, message: "Online payment must be successful before an order can be confirmed or shipped" });
-        if (nextStatus === "CANCELLED" && order.paymentStatus === "SUCCESS") return res.status(409).json({ success: false, message: "Paid orders must use the return and refund process" });
+
+        const currentEtag = computeOrderEtag(order);
+        const ifMatch = req.get("If-Match");
+        if (ifMatch && ifMatch !== "*" && ifMatch !== currentEtag) {
+            res.set("ETag", currentEtag);
+            return problem(res, {
+                type: "precondition-failed",
+                title: "Precondition Failed",
+                status: 412,
+                detail: "Order was modified by another request. If-Match condition failed.",
+                extra: { currentEtag },
+            });
+        }
+
+        if (["CONFIRMED", "SHIPPED"].includes(nextStatus) && order.paymentMethod !== "COD" && order.paymentStatus !== "SUCCESS") {
+            return problem(res, { type: "payment-declined", status: 409, detail: "Online payment must be successful before an order can be confirmed or shipped" });
+        }
+        if (nextStatus === "CANCELLED" && order.paymentStatus === "SUCCESS") {
+            return problem(res, { type: "illegal-transition", status: 409, detail: "Paid orders must use the return and refund process" });
+        }
         if (order.orderStatus === nextStatus && nextStatus === "CANCELLED") {
             try { await releaseInventory(order._id); }
-            catch { return res.status(503).json({ success: false, message: "Order is cancelled; inventory release is pending. Retry this request." }); }
+            catch { return problem(res, { type: "service-unavailable", status: 503, detail: "Order is cancelled; inventory release is pending. Retry this request." }); }
             await releaseCoupon(order._id);
+            res.set("ETag", currentEtag);
             return sendData(res, order);
         }
         if (order.orderStatus === nextStatus && nextStatus === "CONFIRMED") {
             if (order.paymentStatus === "SUCCESS") {
                 try { await commitInventory(order._id); await commitCoupon(order._id); }
-                catch { return res.status(503).json({ success: false, message: "Order finalization is pending. Retry this request." }); }
+                catch { return problem(res, { type: "service-unavailable", status: 503, detail: "Order finalization is pending. Retry this request." }); }
             }
+            res.set("ETag", currentEtag);
             return sendData(res, order);
         }
         if (!ALLOWED_TRANSITIONS[order.orderStatus].includes(nextStatus)) {
-            return res.status(409).json({
-                success: false,
-                message: `Order cannot move from ${order.orderStatus} to ${nextStatus}`,
+            return problem(res, {
+                type: "illegal-transition",
+                status: 409,
+                detail: `Order cannot move from ${order.orderStatus} to ${nextStatus}`,
             });
         }
 
         const shipment = req.body.shipment || {};
         if (nextStatus === "SHIPPED" && (!shipment.carrier || !shipment.trackingNumber)) {
-            return res.status(400).json({
-                success: false,
-                message: "Carrier and trackingNumber are required when shipping an order",
+            return problem(res, {
+                type: "validation-error",
+                status: 400,
+                detail: "Carrier and trackingNumber are required when shipping an order",
+                errors: [
+                    ...(!shipment.carrier ? [{ field: "shipment.carrier", message: "carrier is required" }] : []),
+                    ...(!shipment.trackingNumber ? [{ field: "shipment.trackingNumber", message: "trackingNumber is required" }] : []),
+                ],
             });
         }
 
@@ -946,13 +1036,14 @@ app.patch("/api/orders/:id/status", authenticate, requirePermission("orders.mana
         if (nextStatus === "CANCELLED") void enqueueOrderNotification(order, "order.cancelled", nextStatus);
         if (nextStatus === "CANCELLED") {
             try { await releaseInventory(order._id); }
-            catch { return res.status(503).json({ success: false, message: "Order is cancelled; inventory release is pending. Retry this request." }); }
+            catch { return problem(res, { type: "service-unavailable", status: 503, detail: "Order is cancelled; inventory release is pending. Retry this request." }); }
             await releaseCoupon(order._id);
         }
         if (nextStatus === "SHIPPED" || (nextStatus === "CONFIRMED" && order.paymentStatus === "SUCCESS")) {
             try { await commitInventory(order._id); await commitCoupon(order._id); }
-            catch { return res.status(503).json({ success: false, message: "Order finalization is pending. Retry this request." }); }
+            catch { return problem(res, { type: "service-unavailable", status: 503, detail: "Order finalization is pending. Retry this request." }); }
         }
+        res.set("ETag", computeOrderEtag(order));
         return sendData(res, order);
     } catch (error) {
         return sendError(res, error);
@@ -962,27 +1053,45 @@ app.patch("/api/orders/:id/status", authenticate, requirePermission("orders.mana
 app.post("/api/orders/:id/cancel", authenticate, async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.id)) {
-            return res.status(400).json({ success: false, message: "Invalid order id" });
+            return problem(res, { type: "bad-request", status: 400, detail: "Invalid order id" });
         }
 
         const order = await Order.findById(req.params.id);
         if (!order) {
-            return res.status(404).json({ success: false, message: "Order not found" });
+            return problem(res, { type: "order-not-found", status: 404, detail: "Order not found" });
         }
         if (!canViewOrder(order, req.user)) {
-            return res.status(403).json({ success: false, message: "Forbidden" });
+            return problem(res, { type: "insufficient-permissions", status: 403, detail: "Forbidden" });
         }
+
+        const currentEtag = computeOrderEtag(order);
+        const ifMatch = req.get("If-Match");
+        if (ifMatch && ifMatch !== "*" && ifMatch !== currentEtag) {
+            res.set("ETag", currentEtag);
+            return problem(res, {
+                type: "precondition-failed",
+                title: "Precondition Failed",
+                status: 412,
+                detail: "Order was modified by another request. If-Match condition failed.",
+                extra: { currentEtag },
+            });
+        }
+
         if (order.orderStatus === "CANCELLED") {
             try { await releaseInventory(order._id); }
-            catch { return res.status(503).json({ success: false, message: "Order is cancelled; inventory release is pending. Retry this request." }); }
+            catch { return problem(res, { type: "service-unavailable", status: 503, detail: "Order is cancelled; inventory release is pending. Retry this request." }); }
             await releaseCoupon(order._id);
+            res.set("ETag", currentEtag);
             return sendData(res, order);
         }
-        if (order.paymentStatus === "SUCCESS") return res.status(409).json({ success: false, message: "Paid orders must use the return and refund process" });
+        if (order.paymentStatus === "SUCCESS") {
+            return problem(res, { type: "illegal-transition", status: 409, detail: "Paid orders must use the return and refund process" });
+        }
         if (!ALLOWED_TRANSITIONS[order.orderStatus].includes("CANCELLED")) {
-            return res.status(409).json({
-                success: false,
-                message: "This order can no longer be cancelled",
+            return problem(res, {
+                type: "illegal-transition",
+                status: 409,
+                detail: "This order can no longer be cancelled",
             });
         }
 
@@ -1086,7 +1195,7 @@ app.use((error, req, res, next) => {
     return sendError(res, error);
 });
 
-const port = Number(process.env.PORT) || 4005;
+const port = Number(process.env.ORDER_PORT || process.env.ORDER_SERVICE_PORT) || 4005;
 const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017";
 
 if (process.env.NODE_ENV === "production" && (!process.env.INVENTORY_SERVICE_SECRET || process.env.INVENTORY_SERVICE_SECRET.length < 32 || /change-me|replace-with|local-development/i.test(process.env.INVENTORY_SERVICE_SECRET))) {

@@ -20,6 +20,8 @@ let baseUrl;
 let activeChallenge;
 
 test.before(async () => {
+  process.env.NODE_ENV = "test";
+  process.env.EMAIL_PROVIDER = "mock";
   process.env.JWT_SECRET = "test-auth-login-secret-at-least-32-chars";
   User.findOne = (filter) => ({ select: async () => accounts.get(filter.email) || null });
   User.findById = async (id) => [...accounts.values()].find((account) => account._id === id) || null;

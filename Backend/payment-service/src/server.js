@@ -9,7 +9,7 @@ try {
 const mongoose = require("mongoose");
 const app = require("./app");
 
-const port = Number(process.env.PORT) || 4006;
+const port = Number(process.env.PAYMENT_PORT || process.env.PAYMENT_SERVICE_PORT) || 4006;
 const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017";
 
 mongoose.connect(mongoUri, { dbName: process.env.MONGODB_DB || "smartcart_payments" })

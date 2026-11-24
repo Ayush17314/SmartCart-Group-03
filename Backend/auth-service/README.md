@@ -1,113 +1,104 @@
-# Auth Service
+# SmartCart Auth Service
 
-The Auth Service owns customer and staff accounts in `smartcart_auth`. Passwords
-are bcrypt hashes; JWTs contain a user ID and token version, not a trusted role.
-Protected services ask this service to validate the JWT and return the current
-permissions. A role change, suspension, password reset, or logout increments the
-token version, so previously issued tokens stop working on the next request.
+The Auth Service manages customer and staff identity in `smartcart_auth`. It provides password authentication using bcrypt, Google OAuth token exchange, token-versioned JWT session validation, email verification, and **Email-based 2-Step Verification (MFA)** for Super Administrators.
 
-## Account flows
+---
 
-- Public registration always creates an active `customer` with
-  `emailVerified: false`. The request allowlists name, email, and password; a
-  submitted role is never copied into the account.
-- Verification tokens are 256-bit random values. Only SHA-256 hashes are stored;
-  links expire after one hour and are single use.
-- Customer, staff, and Super Admin login routes are separate and each checks
-  the provisioned database role. Wrong credentials and inactive/unverified
-  accounts receive the generic invalid-credentials response; a valid account
-  using the wrong portal receives a clear portal-mismatch response. Login,
-  verification resend, and recovery routes have process-local limits as well as
-  the gateway limit.
-- Super Admin password login starts a second step by emailing a random six-digit
-  code to the verified account address. Only the code hash and challenge hash
-  are stored; challenges expire after five minutes, allow at most five guesses,
-  and are consumed once. The HTTP-only session is issued only after code
-  verification. Production therefore requires a working email provider.
-- Password reset tokens are hashed, expire after 30 minutes, and can be used
-  once. A successful reset changes the password and revokes all sessions.
-- Logout revokes the current account's token version and clears the frontend
-  cookie. Existing JWTs are checked against the Auth Service on every protected
-  service request. This is deliberately fail-closed if Auth is unavailable.
+## Authentication & Security Model
 
-## Email provider
+- **Bcrypt Password Hashing:** Passwords are never stored in plain text. Hashing is performed with 12 salt rounds.
+- **Stateless Tokens with Token Versioning:** JWT tokens encode the user ID and an integer `tokenVersion`. On every protected request, services ask the Auth Service to validate the session. A logout, password change, account suspension, or role update increments `tokenVersion`, instantly invalidating all existing tokens issued to that account.
+- **Fail-Closed Design:** If the Auth Service is unreachable, protected routes reject access rather than assuming valid permissions.
+- **Portal Separation:** Distinct login routes exist for customers (`/api/auth/customer-login`), staff (`/api/auth/staff-login`), and super administrators (`/api/auth/super-admin-login`). Accounts attempting to log in through the wrong portal receive a descriptive `PORTAL_MISMATCH` error.
 
-Development defaults to `EMAIL_PROVIDER=mock`. It does not send email; the
-frontend shows development-only previews for verification/reset links and the
-Super Admin code. Production startup requires the Resend adapter and these values:
+---
+
+## Super Admin Two-Factor Authentication (Email 2FA)
+
+Super Administrator accounts are protected by mandatory multi-factor authentication:
+
+1. **Credentials Validation:** The user submits their email and password.
+2. **Challenge Creation:** The service generates a cryptographic challenge ID and a random 6-digit verification code. Only SHA-256 hashes of the challenge ID and code are stored in `LoginChallenge`.
+3. **Email Dispatch via Resend:**
+   - A branded HTML email is dispatched to the admin's verified address with the 6-digit code.
+   - **Zero On-Screen Exposure:** The verification code is **never** sent in the API response or displayed on the browser screen.
+   - **Sandbox Developer Support:** When using Resend's test domain (`onboarding@resend.dev`), setting `RESEND_DEV_RECIPIENT=your-email@gmail.com` in `Backend/.env` ensures all development login OTPs land directly in your inbox.
+4. **Challenge Consumption:** The code expires in 5 minutes, allows at most 5 attempts, and is permanently consumed upon successful verification (`POST /api/auth/super-admin-verify`).
+
+---
+
+## Role-Based Access Control (RBAC)
+
+Defined in [`src/permissions.js`](file:///c:/Users/USER/Desktop/Web%20Services/SmartCart/Backend/auth-service/src/permissions.js):
+
+| Role | Access Portal | Permitted Actions |
+|:---|:---|:---|
+| **`customer`** | Storefront (`/login`) | `products.read`, `orders.read_own`, `refunds.request` |
+| **`support`** | Staff Portal (`/admin/login`) | `products.read`, `orders.read_all`, `customers.read`, `returns.review`, `refunds.request`, `notifications.manage` |
+| **`inventory_staff`** | Staff Portal (`/admin/login`) | `products.read`, `products.write`, `inventory.read`, `inventory.write`, `orders.read_all` |
+| **`admin`** | Admin Suite (`/admin`) | All staff permissions plus `orders.manage`, `customers.manage`, `promotions.manage`, `reviews.moderate`, `staff.read`, `analytics.read` |
+| **`super_admin`** | Super Admin Suite (`/super-admin`) | System-wide permissions (`refunds.approve`, `staff.manage`, `settings.manage`, `audit.read`) |
+
+---
+
+## Initial Setup & Bootstrapping
+
+### 1. Configure Environment Variables
+Ensure these variables are present in `Backend/.env`:
 
 ```env
-NODE_ENV=production
-AUTH_EXCHANGE_SECRET=a-separate-random-secret-of-at-least-32-characters
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mgmdzqg.mongodb.net/
+JWT_SECRET=a9955a6c8acabae70be5ea1378f14fad75c0c6b761a7dff8e656a1a0a703933c
+AUTH_EXCHANGE_SECRET=local-auth-exchange-secret-change-me
+
+# Super Admin Credentials
+SUPER_ADMIN_NAME="Ayush Dubey"
+SUPER_ADMIN_EMAIL="ayushdubey1504@gmail.com"
+SUPER_ADMIN_PASSWORD="YourSuperSecurePassword123!" # (Min 16 characters)
+
+# Resend Email Integration
 EMAIL_PROVIDER=resend
-RESEND_API_KEY=your-provider-secret
-EMAIL_FROM=SmartCart <accounts@example.com>
-NEXT_PUBLIC_SITE_URL=https://your-store.example
+RESEND_API_KEY=re_your_api_key_here
+EMAIL_FROM=onboarding@resend.dev
+RESEND_DEV_RECIPIENT=ayushdubey1504@gmail.com
 ```
 
-The provider secret stays in the Auth Service environment. It is not returned
-to the browser or written to logs. The implementation currently supports Resend;
-configure a different provider by adding an adapter rather than using the mock
-in production.
-
-`AUTH_EXCHANGE_SECRET` must be shared by the Next.js server, API Gateway, and
-Auth Service. The Gateway forwards it only on login and Super Admin code
-verification requests that already proved possession of the secret; Auth
-Service returns the JWT only for that server-to-server exchange. Use a separate
-random secret in production and keep it out of all `NEXT_PUBLIC_` variables.
-
-## Existing accounts and Super Admin setup
-
-After backing up the auth database and deploying the new schema, run the
-repeatable backfill once. It sets missing `isActive`, `emailVerified`, and
-`tokenVersion` values on existing accounts, preserving existing `customer` and
-`admin` roles. Legacy accounts are marked verified to avoid locking them out.
-Existing administrators remain ordinary `admin` accounts; none are promoted
-automatically.
-
-```sh
-cd Backend
-docker compose up -d mongodb
-docker compose run --rm auth-service npm run migrate:auth
+### 2. Run the Bootstrap Script
+```bash
+node scripts/bootstrap-super-admin.js
 ```
+*Creates the verified Super Admin account in `smartcart_auth` if it does not already exist.*
 
-To create the first Super Admin, set a new `JWT_SECRET` with at least 32 random
-characters plus `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, and a unique
-`SUPER_ADMIN_PASSWORD` of at least 16 characters in `Backend/.env`, then run:
+---
 
-```sh
-docker compose up -d mongodb
-docker compose run --rm auth-service npm run bootstrap:super-admin
+## Endpoints Reference
+
+| Method | Endpoint | Access | Purpose |
+|:---|:---|:---|:---|
+| `POST` | `/api/auth/register` | Public | Customer account registration |
+| `POST` | `/api/auth/customer-login` | Public | Storefront customer login |
+| `POST` | `/api/auth/staff-login` | Public | Staff portal login (`support`, `inventory_staff`, `admin`) |
+| `POST` | `/api/auth/super-admin-login`| Public | Super Admin password validation & email OTP dispatch |
+| `POST` | `/api/auth/super-admin-verify`| Public | Verify 6-digit email OTP and issue session token |
+| `POST` | `/api/auth/google-login` | Public | Google OAuth credential exchange (Customers & Staff) |
+| `GET` | `/api/auth/session` | Bearer Token | Validate current session and retrieve permissions |
+| `GET` | `/api/auth/profile` | Bearer Token | Retrieve user profile information |
+| `PUT` | `/api/auth/profile` | Bearer Token | Update name or phone number |
+| `POST` | `/api/auth/logout` | Bearer Token | Invalidate current session by bumping token version |
+| `POST` | `/api/auth/verify-email` | Public | Verify email address with 1-hour token |
+| `POST` | `/api/auth/forgot-password` | Public | Request password reset email |
+| `POST` | `/api/auth/reset-password` | Public | Reset password using 30-minute token |
+| `GET` | `/api/auth/users` | Staff Manage | Paginated listing of staff and customer accounts |
+| `POST` | `/api/auth/users/invite` | Super Admin | Send 24-hour staff invitation link via email |
+| `PUT` | `/api/auth/users/:id/role` | Super Admin | Change staff member role |
+| `PUT` | `/api/auth/users/:id/status`| Super Admin | Activate or suspend an account |
+| `GET` | `/api/auth/audit` | Super Admin | Immutable audit log of security events |
+
+---
+
+## Running Tests
+
+```bash
+npm test
 ```
-
-The command refuses to elevate or overwrite an existing account. It does not
-print the password or a session token. Remove the bootstrap password from the
-environment file after it succeeds. Further Super Admin grants are restricted
-to an already authenticated Super Admin and are recorded in the auth audit log.
-
-## Role policy and endpoints
-
-The canonical role/permission catalogue is in `src/permissions.js`. The five
-roles are `customer`, `support`, `inventory_staff`, `admin`, and `super_admin`.
-Refund approval, settings, and audit-log access are reserved for Super Admins;
-ordinary admins do not inherit those permissions.
-
-Endpoints include register/login/session/profile/logout, verify and resend
-email, forgot/reset password, customer/staff listing, 24-hour staff invitation
-and acceptance, role and account-status management, the admin customer summary,
-and auth audit reads. Invitation tokens are stored hashed, accepted atomically
-once, and never returned outside development email previews. Sensitive account
-changes write append-only `AuthAuditEvent` records with actor, target, outcome,
-request ID, timestamp, and sanitized metadata.
-
-Rate-limit counters and the gateway circuit/rate-limit state are process-local.
-Use a shared store before horizontally scaling these services. Only Super Admins
-have `staff.manage`; only they can invite staff or change staff roles. An Admin
-can view staff and manage accounts within its other assigned permissions.
-
-This upgrade phase also does not implement promotions/coupon redemption,
-reviews and moderation screens, store settings, product image uploads, a
-return-review/refund approval workflow, or delivery retries for real email or
-SMS providers. Notifications are recorded as queued requests; this does not
-claim that an email or SMS was delivered. Order checkout still checks available
-stock but does not reserve it atomically, so concurrent checkouts can oversell.
+*Runs unit test suites covering RBAC catalogue verification, portal constraints, session validation, and 2FA login challenge enforcement.*

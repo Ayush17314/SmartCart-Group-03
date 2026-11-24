@@ -148,6 +148,37 @@ describe("SmartCart API gateway", () => {
 
         const missing404 = await request(app).get("/api/nonexistent-endpoint").expect(404);
         expect(missing404.body).toMatchObject({ success: false, message: "Route not found", requestId: expect.any(String) });
+        expect(missing404.headers["content-type"]).toMatch(/application\/problem\+json/);
+        expect(missing404.body.type).toBe("urn:smartcart:error:not-found");
+    });
+
+    test("implements OPTIONS with explicit Allow header", async () => {
+        const response = await request(app).options("/api/products").expect(204);
+        expect(response.headers.allow).toBe("GET, POST, OPTIONS, HEAD");
+    });
+
+    test("rejects unsupported Accept headers with 406 Not Acceptable", async () => {
+        const response = await request(app)
+            .get("/api/products")
+            .set("Accept", "text/csv")
+            .expect(406);
+        expect(response.headers["content-type"]).toMatch(/application\/problem\+json/);
+        expect(response.body.type).toBe("urn:smartcart:error:not-acceptable");
+    });
+
+    test("returns RFC 7807/9457 Problem Details with errors[] array on validation error", async () => {
+        const response = await request(app)
+            .post("/api/products")
+            .set("Idempotency-Key", "bad-prod-multi")
+            .send({ name: "", price: -5 })
+            .expect(400);
+        expect(response.headers["content-type"]).toMatch(/application\/problem\+json/);
+        expect(response.body.type).toBe("urn:smartcart:error:validation-error");
+        expect(Array.isArray(response.body.errors)).toBe(true);
+        expect(response.body.errors.length).toBeGreaterThan(0);
+        expect(response.body.errors[0]).toHaveProperty("field");
+        expect(response.body.errors[0]).toHaveProperty("message");
     });
 });
+
 

@@ -222,11 +222,10 @@ Ensure the following key variables are configured in `Backend/.env`:
 # Database Connection (MongoDB Atlas or Local)
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mgmdzqg.mongodb.net/
 
-# Email Provider Configuration (Resend)
-EMAIL_PROVIDER=resend
-RESEND_API_KEY=re_your_api_key_here
-EMAIL_FROM=onboarding@resend.dev
-RESEND_DEV_RECIPIENT=your-email@gmail.com
+# Email Provider Configuration (100% Free SMTP - Sends to ANY recipient)
+EMAIL_PROVIDER=smtp
+GMAIL_USER=ayushdubey1504@gmail.com
+GMAIL_APP_PASSWORD=your_16_character_app_password
 
 # Inter-Service Shared Secrets (Min 32 characters)
 JWT_SECRET=a9955a6c8acabae70be5ea1378f14fad75c0c6b761a7dff8e656a1a0a703933c
@@ -354,6 +353,19 @@ npm test
 cd ../notification-service
 npm test
 ```
+
+---
+
+## ☁️ 100% Free Cloud Deployment Guide
+
+SmartCart is configured for **$0 / month zero-cost cloud deployment** with no credit card required:
+- **Frontend (Next.js 15):** Deployed to **[Vercel](https://vercel.com)** (Hobby Free Tier)
+- **Backend (8 Microservices):** Deployed to **[Render](https://render.com)** (Free Web Service) or via [`Backend/Dockerfile`](Backend/Dockerfile)
+- **Database:** Hosted on **[MongoDB Atlas](https://www.mongodb.com/cloud/atlas)** (Free M0 Cluster)
+- **Email Pipeline:** Powered by **SMTP (Nodemailer / Gmail)** for 100% free delivery to any customer recipient
+- **Idempotency Store:** Runs directly in-memory via `IDEMPOTENCY_STORE=memory` (eliminating paid SQL databases)
+
+For the complete, step-by-step walkthrough with environment variables, configuration screenshots, and keep-alive tips, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 ---
 

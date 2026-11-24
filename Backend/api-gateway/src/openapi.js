@@ -10,6 +10,29 @@ module.exports = {
         securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
         schemas: {
             Error: { type: "object", required: ["success", "message", "requestId"], properties: { success: { type: "boolean", enum: [false] }, message: { type: "string" }, requestId: { type: "string" } } },
+            ProblemDetails: {
+                type: "object",
+                required: ["type", "title", "status", "detail"],
+                properties: {
+                    type: { type: "string", format: "uri", example: "urn:smartcart:error:order-not-found" },
+                    title: { type: "string", example: "Order Not Found" },
+                    status: { type: "integer", example: 404 },
+                    detail: { type: "string", example: "No order was found with the specified identifier." },
+                    instance: { type: "string", example: "/api/orders/64f1..." },
+                    requestId: { type: "string", example: "4525a2ee-4993-4e1d..." },
+                    errors: {
+                        type: "array",
+                        items: {
+                            type: "object",
+                            properties: {
+                                field: { type: "string" },
+                                message: { type: "string" },
+                                keyword: { type: "string" },
+                            },
+                        },
+                    },
+                },
+            },
             Product: { type: "object", properties: { _id: { type: "string" }, name: { type: "string" }, price: { type: "number" }, category: { type: "string" }, stock: { type: "integer" } } },
             ProductInput: { type: "object", required: ["name", "price", "category"], properties: { name: { type: "string", maxLength: 200 }, sku: { type: "string", maxLength: 80 }, description: { type: "string" }, price: { type: "number", minimum: 0 }, category: { type: "string" }, brand: { type: "string" }, stock: { type: "integer", minimum: 0 }, stockAdjustmentReason: { type: "string", maxLength: 500 }, images: { type: "array", items: { type: "string", format: "uri", pattern: "^https://" } } } },
             ProductList: { type: "object", properties: { success: { type: "boolean" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Product" } }, pagination: { type: "object", properties: { nextCursor: { type: "string", nullable: true } } }, links: { type: "object", properties: { next: { type: "string", nullable: true } } } } } } },
@@ -17,17 +40,22 @@ module.exports = {
         },
         parameters: {
             IdempotencyKey: { in: "header", name: "Idempotency-Key", required: true, schema: { type: "string", maxLength: 200 } },
+            IfMatch: { in: "header", name: "If-Match", schema: { type: "string" }, description: "ETag precondition for optimistic concurrency control" },
             Cursor: { in: "query", name: "after", schema: { type: "string" }, description: "Opaque cursor returned by the previous page" },
             Limit: { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
         },
         responses: {
-            Error: { description: "Standard API error body", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-            NotModified: { description: "Cached representation has not changed" },
-            RateLimited: { description: "Rate limit exceeded", headers: { "RateLimit-Limit": { schema: { type: "integer" } }, "RateLimit-Remaining": { schema: { type: "integer" } }, "Retry-After": { schema: { type: "integer" } } } },
+            Error: { description: "RFC 7807/9457 Problem Details error body", content: { "application/problem+json": { schema: { $ref: "#/components/schemas/ProblemDetails" } }, "application/json": { schema: { $ref: "#/components/schemas/ProblemDetails" } } } },
+            NotModified: { description: "Cached representation has not changed (304)" },
+            RateLimited: { description: "Rate limit exceeded (429)", headers: { "RateLimit-Limit": { schema: { type: "integer" } }, "RateLimit-Remaining": { schema: { type: "integer" } }, "Retry-After": { schema: { type: "integer" } } }, content: { "application/problem+json": { schema: { $ref: "#/components/schemas/ProblemDetails" } } } },
+            PreconditionFailed: { description: "Precondition Failed (412 If-Match mismatch)", content: { "application/problem+json": { schema: { $ref: "#/components/schemas/ProblemDetails" } } } },
+            NotAcceptable: { description: "Not Acceptable (406 Unsupported Accept header)", content: { "application/problem+json": { schema: { $ref: "#/components/schemas/ProblemDetails" } } } },
+            UnprocessableEntity: { description: "Unprocessable Entity (422 Validation error array)", content: { "application/problem+json": { schema: { $ref: "#/components/schemas/ProblemDetails" } } } },
         },
     },
     paths: {
         "/api/products": {
+            options: { summary: "Check allowed HTTP methods for product collection", responses: { "204": { description: "Allowed methods", headers: { Allow: { schema: { type: "string", example: "GET, POST, OPTIONS, HEAD" } } } } } },
             get: {
                 summary: "List products using cursor pagination",
                 parameters: [
@@ -37,14 +65,21 @@ module.exports = {
                     { in: "header", name: "If-None-Match", schema: { type: "string" } },
                     { in: "header", name: "Accept", schema: { type: "string", enum: ["application/json", "application/xml"] } },
                 ],
-                responses: { "200": { description: "Product page", headers: { ETag: { schema: { type: "string" } }, Link: { schema: { type: "string" } }, "Cache-Control": { schema: { type: "string" } } }, content: { "application/json": { schema: { $ref: "#/components/schemas/ProductList" } }, "application/xml": { schema: { type: "string" } } } }, "304": { $ref: "#/components/responses/NotModified" }, "429": { $ref: "#/components/responses/RateLimited" }, "500": { $ref: "#/components/responses/Error" } },
+                responses: { "200": { description: "Product page", headers: { ETag: { schema: { type: "string" } }, Link: { schema: { type: "string" } }, "Cache-Control": { schema: { type: "string" } } }, content: { "application/json": { schema: { $ref: "#/components/schemas/ProductList" } }, "application/xml": { schema: { type: "string" } } } }, "304": { $ref: "#/components/responses/NotModified" }, "406": { $ref: "#/components/responses/NotAcceptable" }, "429": { $ref: "#/components/responses/RateLimited" }, "500": { $ref: "#/components/responses/Error" } },
             },
-            post: { security: [{ bearerAuth: [] }], summary: "Create a product", parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProductInput" } } } }, responses: { "201": { description: "Created" }, "400": { $ref: "#/components/responses/Error" }, "401": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" }, "429": { $ref: "#/components/responses/RateLimited" } } },
+            post: { security: [{ bearerAuth: [] }], 
+            summary: "Create a product", 
+            parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }], 
+            requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProductInput" } } } }, 
+            responses: { "201": { description: "Created", headers: { Location: { schema: { type: "string", example: "/api/products/64f1..." } }, ETag: { schema: { type: "string" } } } }, "400": { $ref: "#/components/responses/Error" }, "401": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" }, "429": { $ref: "#/components/responses/RateLimited" } 
+                } 
+            },
         },
         "/api/products/brands": { get: { summary: "List active product brands with product counts", responses: { "200": { description: "Brand list" } } } },
         "/api/products/{id}": {
-            get: { summary: "Get a product", parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }, { in: "header", name: "If-None-Match", schema: { type: "string" } }], responses: { "200": { description: "Product" }, "304": { $ref: "#/components/responses/NotModified" }, "404": { $ref: "#/components/responses/Error" } } },
-            put: { security: [{ bearerAuth: [] }], summary: "Replace product details", parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProductInput" } } } }, responses: { "200": { description: "Updated" }, "404": { $ref: "#/components/responses/Error" } } },
+            options: { summary: "Check allowed HTTP methods for a product", parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }], responses: { "204": { description: "Allowed methods", headers: { Allow: { schema: { type: "string", example: "GET, PUT, DELETE, OPTIONS, HEAD" } } } } } },
+            get: { summary: "Get a product", parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }, { in: "header", name: "If-None-Match", schema: { type: "string" } }], responses: { "200": { description: "Product", headers: { ETag: { schema: { type: "string" } } } }, "304": { $ref: "#/components/responses/NotModified" }, "404": { $ref: "#/components/responses/Error" } } },
+            put: { security: [{ bearerAuth: [] }], summary: "Replace product details", parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }, { $ref: "#/components/parameters/IfMatch" }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProductInput" } } } }, responses: { "200": { description: "Updated", headers: { ETag: { schema: { type: "string" } } } }, "404": { $ref: "#/components/responses/Error" }, "412": { $ref: "#/components/responses/PreconditionFailed" } } },
             delete: { security: [{ bearerAuth: [] }], summary: "Archive a product without removing historical order data", parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }], responses: { "200": { description: "Archived" }, "404": { $ref: "#/components/responses/Error" } } },
         },
         "/api/products/admin": {
@@ -123,7 +158,9 @@ module.exports = {
                 responses: { "200": { description: "Verified Super Admin profile; trusted Next.js server receives the JWT for an HttpOnly cookie" }, "401": { $ref: "#/components/responses/Error" } },
             },
         },
-        "/api/auth/verify-email": { post: { summary: "Verify a one-time email token", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["token"], properties: { token: { type: "string" } } } } } }, responses: { "200": { description: "Email verified" }, "400": { $ref: "#/components/responses/Error" } } } },
+        "/api/auth/verify-email": { post: { summary: "Verify a one-time email token", 
+            requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["token"], properties: { token: { type: "string" } } } } } }, 
+            responses: { "200": { description: "Email verified" }, "400": { $ref: "#/components/responses/Error" } } } },
         "/api/auth/resend-verification": { post: { summary: "Request another verification email", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["email"], properties: { email: { type: "string", format: "email" } } } } } }, responses: { "200": { description: "Generic response to prevent account enumeration" } } } },
         "/api/auth/forgot-password": { post: { summary: "Request a password reset link", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["email"], properties: { email: { type: "string", format: "email" } } } } } }, responses: { "200": { description: "Generic response to prevent account enumeration" } } } },
         "/api/auth/reset-password": { post: { summary: "Set a new password using a one-time token", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["token", "password"], properties: { token: { type: "string" }, password: { type: "string", minLength: 8, maxLength: 128 } } } } } }, responses: { "200": { description: "Password updated and previous sessions revoked" }, "400": { $ref: "#/components/responses/Error" } } } },

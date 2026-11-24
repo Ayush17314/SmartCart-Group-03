@@ -1,5 +1,10 @@
 require("dotenv").config();
 require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+try {
+  const rawDns = require("dns");
+  const nonLocalDns = rawDns.getServers().filter((s) => s !== "127.0.0.1" && s !== "::1");
+  rawDns.setServers(["8.8.8.8", "1.1.1.1", ...nonLocalDns]);
+} catch {}
 
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
